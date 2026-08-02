@@ -9,26 +9,17 @@ st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="wid
 
 DATA_DIR = "ml-latest-small"
 
-
-# ---------- Data loading & model (cached so it only runs once) ----------
-
 @st.cache_data
 def load_data():
     movies = pd.read_csv(f"{DATA_DIR}/movies.csv")
-    links = pd.read_csv(f"{DATA_DIR}/links.csv")  # movieId -> imdbId, tmdbId
+    links = pd.read_csv(f"{DATA_DIR}/links.csv")  
 
-    # Drop rows with no genre info
+
     movies = movies[movies["genres"] != "(no genres listed)"].copy()
 
-    # Merge in tmdbId so we can fetch real posters (no title-guessing)
     movies = movies.merge(links[["movieId", "tmdbId"]], on="movieId", how="left")
 
-    # Clean genres for vectorizing
     movies["genres_clean"] = movies["genres"].str.replace("|", " ", regex=False)
-
-    # IMPORTANT FIX: original code indexed by title, which breaks when two
-    # movies share a title (e.g. remakes). Reset to a clean positional index
-    # and always look things up by movieId instead.
     movies = movies.reset_index(drop=True)
 
     return movies
@@ -36,8 +27,6 @@ def load_data():
 
 @st.cache_data
 def build_similarity(movies):
-    # Switched CountVectorizer -> TF-IDF: down-weights extremely common
-    # genres (like "Drama") so recommendations aren't dominated by them.
     vectorizer = TfidfVectorizer(stop_words="english")
     genre_matrix = vectorizer.fit_transform(movies["genres_clean"])
     cosine_sim = cosine_similarity(genre_matrix, genre_matrix)
@@ -48,12 +37,9 @@ def recommend(movies, cosine_sim, movie_id, n=10):
     idx = movies.index[movies["movieId"] == movie_id][0]
     scores = list(enumerate(cosine_sim[idx]))
     scores = sorted(scores, key=lambda x: x[1], reverse=True)
-    top = scores[1:n + 1]  # skip itself
+    top = scores[1:n + 1] 
     top_indices = [i[0] for i in top]
     return movies.iloc[top_indices]
-
-
-# ---------- Poster fetching ----------
 
 @st.cache_data(show_spinner=False)
 def get_poster_url(tmdb_id, api_key):
@@ -74,9 +60,6 @@ def get_poster_url(tmdb_id, api_key):
 
 PLACEHOLDER = "https://placehold.co/300x450?text=No+Poster"
 
-
-# ---------- UI ----------
-
 st.title("🎬 Movie Recommender")
 st.caption("Content-based recommendations using genre similarity (MovieLens ml-latest-small)")
 
@@ -89,13 +72,11 @@ with st.sidebar:
 movies = load_data()
 cosine_sim = build_similarity(movies)
 
-# Build a display label that disambiguates duplicate titles by year/movieId
 movies["display_title"] = movies["title"]
 
 selected_title = st.selectbox("Pick a movie you like:", movies["display_title"].sort_values().unique())
 
 if st.button("Recommend", type="primary"):
-    # Handle duplicate titles by taking the first match's movieId
     match = movies[movies["display_title"] == selected_title].iloc[0]
     results = recommend(movies, cosine_sim, match["movieId"], n=n_recs)
 
